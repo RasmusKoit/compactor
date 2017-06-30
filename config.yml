@@ -1,0 +1,7 @@
+materials:
+  - sourceMaterial: IRON_INGOT
+    sourceCount: 9
+    targetMaterial: IRON_BLOCK
+  - sourceMaterial: DIAMOND
+    sourceCount: 9
+    targetMaterial: DIAMOND_BLOCK
