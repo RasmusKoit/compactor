@@ -130,6 +130,11 @@ public class Main extends JavaPlugin {
                     for(int i = 0; i < addAmount; i++) {
                         if(!addItem(inventory, info.targetMaterial)) {
                             droppedItems++;
+                        } else {
+                            mergedItems.computeIfPresent(info.targetMaterial, (k, matCount) -> {
+                                matCount.getAndIncrement();
+                                return matCount;
+                            });
                         }
                     }
 
@@ -137,6 +142,11 @@ public class Main extends JavaPlugin {
                     for(int i = 0; i < overflowAmount; i++) {
                         if(!addItem(inventory, info.sourceMaterial)) {
                             droppedItems++;
+                        } else {
+                            mergedItems.computeIfPresent(info.sourceMaterial, (k, matCount) -> {
+                                matCount.getAndIncrement();
+                                return matCount;
+                            });
                         }
                     }
 
