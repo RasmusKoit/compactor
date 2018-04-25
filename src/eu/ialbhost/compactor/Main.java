@@ -56,6 +56,7 @@ public class Main extends JavaPlugin {
         if(sender instanceof Player) {
             Player player = (Player) sender;
             compactInventory(player);
+            sender.sendMessage("All possible items have been compacted");
         } else {
             sender.sendMessage("Only in-game players can use this command");
         }
