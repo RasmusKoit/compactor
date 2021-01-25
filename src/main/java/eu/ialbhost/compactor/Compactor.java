@@ -23,7 +23,7 @@ import org.bukkit.plugin.java.JavaPlugin;
 
 public class Compactor extends JavaPlugin {
     /* Holds all MaterialCompactorInfo references */            /* Note: you can use diamond types (<>), */
-    private List<MaterialCompactorInfo> materialCompactorInfoList = new ArrayList<>(); /* because generic */
+    private final List<MaterialCompactorInfo> materialCompactorInfoList = new ArrayList<>(); /* because generic */
     /* signature matches field's signature,
      * doing this is supported from Java 7
      */
@@ -73,7 +73,7 @@ public class Compactor extends JavaPlugin {
 
         /* Reload MaterialCompactorInfo list */
         materialCompactorInfoList.clear();
-        getConfig().getList("materials").forEach(material -> {
+        Objects.requireNonNull(getConfig().getList("materials")).forEach(material -> {
             @SuppressWarnings("unchecked") /* Shut the fuck up right now, let me do my thing... */
                     Map<String,Object> serializedInfo = (Map<String,Object>) material;
             materialCompactorInfoList.add(new MaterialCompactorInfo(serializedInfo));
@@ -99,75 +99,74 @@ public class Compactor extends JavaPlugin {
                 });
 
         /* Find compactable items */
-        mergedItems.forEach((material, count) -> {
-            findForMaterial(material).ifPresent(info -> {
-                if(inventory.containsAtLeast(new ItemStack(material), info.sourceCount)) {
-                    /* Set up item count check */
-                    AtomicInteger iteratedItems = new AtomicInteger(0);
+        mergedItems.forEach((material, count) -> findForMaterial(material).ifPresent(info -> {
+            if(inventory.containsAtLeast(new ItemStack(material), info.sourceCount)) {
+                /* Set up item count check */
+                AtomicInteger iteratedItems = new AtomicInteger(0);
 
-                    /* Get all ItemStacks (with slot id's) from inventory */
-                    HashMap<Integer, ? extends ItemStack> inventoryItems = inventory.all(material);
+                /* Get all ItemStacks (with slot id's) from inventory */
+                HashMap<Integer, ? extends ItemStack> inventoryItems = inventory.all(material);
 
-                    /* Iterate over map */
-                    inventoryItems.forEach((slot, itemStack) -> {
-                        /* Failable assertion, ideally shouldn't happen */
-                        if(itemStack == null || itemStack.getType() != info.sourceMaterial) {
-                            getLogger().warning(itemStack + ".getType() != " + info.sourceMaterial);
-                            return;
-                        }
-                        iteratedItems.getAndAdd(itemStack.getAmount());
-                        inventory.clear(slot);
-                    });
-
+                /* Iterate over map */
+                inventoryItems.forEach((slot, itemStack) -> {
                     /* Failable assertion, ideally shouldn't happen */
-                    if(count.get() != iteratedItems.get()) {
-                        getLogger().warning(String.format(
-                                "Player %s inventory compacting: count %s != iteratedItems %s",
-                                player.getName(), count.get(), iteratedItems.get()
-                        ));
+                    if(itemStack == null || itemStack.getType() != info.sourceMaterial) {
+                        getLogger().warning(itemStack + ".getType() != " + info.sourceMaterial);
+                        return;
                     }
+                    iteratedItems.getAndAdd(itemStack.getAmount());
+                    inventory.clear(slot);
+                });
 
-                    int addAmount = count.get() / info.sourceCount; /* How many target blocks should be added */
-                    int overflowAmount = count.get() % info.sourceCount; /* How many source blocks should be restored */
-                    int droppedItems = 0; /* How many items got dropped */
+                /* Failable assertion, ideally shouldn't happen */
+                if(count.get() != iteratedItems.get()) {
+                    getLogger().warning(String.format(
+                            "Player %s inventory compacting: count %s != iteratedItems %s",
+                            player.getName(), count.get(), iteratedItems.get()
+                    ));
+                }
 
-                    /* Add items */
-                    for(int i = 0; i < addAmount; i++) {
-                        if(!addItem(inventory, info.targetMaterial)) {
-                            droppedItems++;
-                        } else {
-                            mergedItems.computeIfPresent(info.targetMaterial, (k, matCount) -> {
-                                matCount.getAndIncrement();
-                                return matCount;
-                            });
-                        }
-                    }
+                int addAmount = count.get() / info.sourceCount; /* How many target blocks should be added */
+                int overflowAmount = count.get() % info.sourceCount; /* How many source blocks should be restored */
+                int droppedItems = 0; /* How many items got dropped */
 
-                    /* And restore non-compacted items */
-                    for(int i = 0; i < overflowAmount; i++) {
-                        if(!addItem(inventory, info.sourceMaterial)) {
-                            droppedItems++;
-                        } else {
-                            mergedItems.computeIfPresent(info.sourceMaterial, (k, matCount) -> {
-                                matCount.getAndIncrement();
-                                return matCount;
-                            });
-                        }
-                    }
-
-                    /* Warn player about dropped items */
-                    if(droppedItems > 0) {
-                        player.sendMessage(droppedItems + " items got dropped on ground, because " +
-                                "of insufficient space in inventory.");
+                /* Add items */
+                for(int i = 0; i < addAmount; i++) {
+                    if(addItem(inventory, info.targetMaterial)) {
+                        droppedItems++;
+                    } else {
+                        mergedItems.computeIfPresent(info.targetMaterial, (k, matCount) -> {
+                            matCount.getAndIncrement();
+                            return matCount;
+                        });
                     }
                 }
-            });
-        });
+
+                /* And restore non-compacted items */
+                for(int i = 0; i < overflowAmount; i++) {
+                    if(addItem(inventory, info.sourceMaterial)) {
+                        droppedItems++;
+                    } else {
+                        mergedItems.computeIfPresent(info.sourceMaterial, (k, matCount) -> {
+                            matCount.getAndIncrement();
+                            return matCount;
+                        });
+                    }
+                }
+
+                /* Warn player about dropped items */
+                if(droppedItems > 0) {
+                    player.sendMessage(droppedItems + " items got dropped on ground, because " +
+                            "of insufficient space in inventory.");
+                }
+            }
+        }));
     }
 
     /* Makes sure that given ItemStack doesn't have custom data */
     private boolean hasNoCustomData(ItemStack itemStack) {
         ItemMeta im = itemStack.getItemMeta();
+        assert im != null;
         boolean has = im.hasDisplayName();
         has = has || im.hasEnchants();
         has = has || im.hasLore();
@@ -198,7 +197,7 @@ public class Compactor extends JavaPlugin {
             /* If ItemStack has less items than max stack size, increment item count */
             if(itemStack.getAmount() < inventory.getMaxStackSize()) {
                 itemStack.setAmount(itemStack.getAmount() + 1);
-                return true;
+                return false;
             }
 
             /* continue; // Do same thing with next ItemStack */
@@ -218,10 +217,10 @@ public class Compactor extends JavaPlugin {
             /* Drop item on the ground */
             Player player = (Player) inventory.getHolder();
             Location playerLoc = player.getLocation();
-            playerLoc.getWorld().dropItemNaturally(playerLoc, new ItemStack(material, 1));
-            return false;
+            Objects.requireNonNull(playerLoc.getWorld()).dropItemNaturally(playerLoc, new ItemStack(material, 1));
+            return true;
         }
-        return true;
+        return false;
     }
 
     /* Configuration serializable [Material, Material, int] class */
