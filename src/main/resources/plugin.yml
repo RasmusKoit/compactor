@@ -1,0 +1,19 @@
+main: eu.ialbhost.compactor.Compactor
+name: Compactor
+version: 3.0.1
+author: [raks321, mikroskeem]
+description: Compact your items
+api-version: 1.16
+commands:
+  compact:
+    description: Compact all possible items in your inventory
+    usage: /compact or /compactor
+    aliases: [compactor]
+    permission: compactor.use
+    permission-message: You don't have the compact.use permission.
+  compact reload:
+    description: Reloads compactor config file
+    usage: /compactor reload
+    aliases: [compactor]
+    permission: compactor.reload
+    permission-message: You don't have the compact.reload permission.
