@@ -1,19 +1,38 @@
 main: eu.ialbhost.compactor.Compactor
 name: Compactor
-version: 3.0.1
-author: [raks321, mikroskeem]
+version: 3.0.2
+authors: [raks321, mikroskeem]
 description: Compact your items
 api-version: 1.16
 commands:
   compact:
     description: Compact all possible items in your inventory
-    usage: /compact or /compactor
-    aliases: [compactor]
-    permission: compactor.use
-    permission-message: You don't have the compact.use permission.
-  compact reload:
-    description: Reloads compactor config file
-    usage: /compactor reload
-    aliases: [compactor]
-    permission: compactor.reload
-    permission-message: You don't have the compact.reload permission.
+    usage:  |
+            /<command>
+            Example: /compact - compacts items in your inventory
+            /<command> <add | rm> [material] [amount] [material]
+            Example: /compact add dirt 32 grass_block - compacts 32 dirt to 1 grass
+            /<command> <add | rm> [material] [amount] [material]
+            Example: /compact rm dirt 32 grass_block - removes that from config file
+            /<command> reload
+            Example: /compact reload - reloads config file.
+permissions:
+  compact.edit:
+    children:
+      compact.edit.add: true
+      compact.edit.rm: true
+    description: Allows the player to edit compactor config
+  compact.edit.add:
+    description: Allows the player to add compacts to config
+  compact.edit.rm:
+    description: Allows the player to remove compacts from config
+  compact.use:
+    description: Allows the player to use compact
+    default: true
+  compact.*:
+    description: Gives all permissions for compactor plugin
+    default: op
+    children:
+      compact.use: true
+      compact.edit: true
+      compact.reload: true

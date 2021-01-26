@@ -1,14 +1,5 @@
 package eu.ialbhost.compactor;
 
-import java.util.ArrayList;
-import java.util.HashMap;
-import java.util.List;
-import java.util.Map;
-import java.util.Objects;
-import java.util.Optional;
-import java.util.concurrent.atomic.AtomicInteger;
-import java.util.stream.StreamSupport;
-
 import org.bukkit.Location;
 import org.bukkit.Material;
 import org.bukkit.command.Command;
@@ -21,6 +12,11 @@ import org.bukkit.inventory.ItemStack;
 import org.bukkit.inventory.meta.ItemMeta;
 import org.bukkit.plugin.java.JavaPlugin;
 
+import java.util.*;
+import java.util.concurrent.atomic.AtomicInteger;
+import java.util.stream.StreamSupport;
+
+@SuppressWarnings("unused")
 public class Compactor extends JavaPlugin {
     /* Holds all MaterialCompactorInfo references */            /* Note: you can use diamond types (<>), */
     private final List<MaterialCompactorInfo> materialCompactorInfoList = new ArrayList<>(); /* because generic */
@@ -29,7 +25,8 @@ public class Compactor extends JavaPlugin {
      */
 
     /* Called when plugin gets enabled in server */
-    @Override public void onEnable() {
+    @Override
+    public void onEnable() {
         /* Register MaterialCompactorInfo class */
         ConfigurationSerialization.registerClass(MaterialCompactorInfo.class);
 
@@ -41,31 +38,131 @@ public class Compactor extends JavaPlugin {
     }
 
     /* Called when command is invoked on server (only commands registered on plugin.yml reach here */
-    @Override public boolean onCommand(CommandSender sender, Command command, String label, String[] args) {
-        if(!command.getName().equalsIgnoreCase("compact")) return false;
+    @Override
+    public boolean onCommand(CommandSender sender, Command command, String label, String[] args) {
+        if (!command.getName().equalsIgnoreCase("compact")) return false;
 
-        /* Reloads configuration */
-        if(args.length == 1 && args[0].equals("reload")) {
-            if(sender.hasPermission("compactor.reload")) {
-                this.reloadConfig();
-                sender.sendMessage("Configuration reloaded");
-
-            } else {
-                sender.sendMessage("You dont have permissions to use this command [compactor.reload].");
+        /* Player only commands */
+        if (sender instanceof Player) {
+            Player player = (Player) sender;
+            if (args.length == 0 && player.hasPermission("compact.use")) {
+                compactInventory(player);
+                player.sendMessage("All possible items have been compacted");
+                return true;
             }
-            return true;
+        }
+        /* Does not need player to execute */
+        if (args.length > 0) {
+            String subCmd = args[0];
+            switch (subCmd) {
+                case "reload":
+                    if (!sender.hasPermission("compact.reload")) return false;
+                    this.reloadConfig();
+                    sender.sendMessage("Compactor configuration reloaded");
+                    return true;
+                case "add":
+                    if (!sender.hasPermission("compact.edit.add")) return false;
+
+                    if (!(args.length == 4)) return false;
+                    return editConfig(args, "add", sender);
+                case "rm":
+                    if (!sender.hasPermission("compact.edit.rm")) return false;
+                    if (!(args.length == 4)) return false;
+                    return editConfig(args, "rm", sender);
+                default:
+                    return false;
+            }
+        }
+        return false;
+    }
+
+
+    @Override
+    public List<String> onTabComplete(CommandSender sender, Command command, String alias, String[] args) {
+        List<String> tabHints = new ArrayList<>();
+
+        switch (args.length) {
+            case 1:
+                String[] commandHints = new String[]{"add", "rm", "reload"};
+                tabHints.addAll(Arrays.asList(commandHints));
+                return tabHints;
+            case 2:
+            case 4:
+                if (!args[0].equals("reload")) {
+                    int materialIndex = ((args.length == 2) ? 1 : 3); // Hint for source and target materials
+                    String[] materialHints = Arrays.stream(Material.values())
+                            .map(Enum::toString)
+                            .filter(x -> x.contains(args[materialIndex].toUpperCase()))
+                            .toArray(String[]::new);
+                    tabHints.addAll(Arrays.asList(materialHints));
+                }
+                return tabHints;
+            default:
+                return tabHints;
+        }
+    }
+
+    private boolean editConfig(String[] args, String subcmd, CommandSender sender) {
+        if (!(validateMaterialValues(args[1], args[2], args[3]))) return false;
+        // User defined compact Object
+        Material sourceMaterial = Material.matchMaterial(args[1]);
+        int sourceCount = Integer.parseInt(args[2]);
+        Material targetMaterial = Material.matchMaterial(args[3]);
+
+        LinkedHashMap<String, Object> newMaterial = new LinkedHashMap<>();
+        newMaterial.put("sourceMaterial", Objects.requireNonNull(sourceMaterial).toString());
+        newMaterial.put("sourceCount", sourceCount);
+        newMaterial.put("targetMaterial", Objects.requireNonNull(targetMaterial).toString());
+
+        @SuppressWarnings("unchecked")
+        ArrayList<LinkedHashMap<String, Object>> materials = new ArrayList<>(
+                (Collection<? extends LinkedHashMap<String, Object>>)
+                        Objects.requireNonNull(getConfig().getList("materials")));
+
+        if (subcmd.equals("add")) {
+            if (!(checkIfCmpExists(newMaterial, materials))) {
+                materials.add(newMaterial);
+            } else {
+                sender.sendMessage("This configuration already exists!");
+                return true;
+            }
+        } else if (subcmd.equals("rm")) {
+            if (materials.contains(newMaterial)) {
+                materials.remove(newMaterial);
+            } else {
+                sender.sendMessage("This configuration wasn't found");
+                return true;
+            }
+        } else {
+            return false;
         }
 
-        /* Check if command sender is actually a player */
-        if(sender instanceof Player) {
-            Player player = (Player) sender;
-            compactInventory(player);
-            sender.sendMessage("All possible items have been compacted");
-        } else {
-            sender.sendMessage("Only in-game players can use this command");
+        getConfig().set("materials", materials);
+        saveConfig();
+        reloadConfig();
+        sender.sendMessage("Compactor configuration updated!");
+        return true;
+    }
+
+    private boolean checkIfCmpExists(LinkedHashMap<String, Object> searchable, ArrayList<LinkedHashMap<String, Object>> materials) {
+        for (LinkedHashMap<String, Object> material : materials) {
+            if (searchable.get("sourceMaterial").equals(material.get("sourceMaterial"))) return true;
+        }
+        return false;
+    }
+
+    private boolean validateMaterialValues(String sourceMaterial, String count, String targetMaterial) {
+        if (Material.matchMaterial(sourceMaterial) == null) return false;
+        if (Material.matchMaterial(targetMaterial) == null) return false;
+        if (count == null) return false;
+        try {
+            Integer.parseInt(count);
+        } catch (NumberFormatException nfe) {
+            return false;
         }
         return true;
     }
+
 
     @Override
     public void reloadConfig() {
@@ -75,7 +172,7 @@ public class Compactor extends JavaPlugin {
         materialCompactorInfoList.clear();
         Objects.requireNonNull(getConfig().getList("materials")).forEach(material -> {
             @SuppressWarnings("unchecked") /* Shut the fuck up right now, let me do my thing... */
-                    Map<String,Object> serializedInfo = (Map<String,Object>) material;
+                    Map<String, Object> serializedInfo = (Map<String, Object>) material;
             materialCompactorInfoList.add(new MaterialCompactorInfo(serializedInfo));
         });
     }
@@ -100,7 +197,7 @@ public class Compactor extends JavaPlugin {
 
         /* Find compactable items */
         mergedItems.forEach((material, count) -> findForMaterial(material).ifPresent(info -> {
-            if(inventory.containsAtLeast(new ItemStack(material), info.sourceCount)) {
+            if (inventory.containsAtLeast(new ItemStack(material), info.sourceCount)) {
                 /* Set up item count check */
                 AtomicInteger iteratedItems = new AtomicInteger(0);
 
@@ -110,7 +207,7 @@ public class Compactor extends JavaPlugin {
                 /* Iterate over map */
                 inventoryItems.forEach((slot, itemStack) -> {
                     /* Failable assertion, ideally shouldn't happen */
-                    if(itemStack == null || itemStack.getType() != info.sourceMaterial) {
+                    if (itemStack == null || itemStack.getType() != info.sourceMaterial) {
                         getLogger().warning(itemStack + ".getType() != " + info.sourceMaterial);
                         return;
                     }
@@ -119,7 +216,7 @@ public class Compactor extends JavaPlugin {
                 });
 
                 /* Failable assertion, ideally shouldn't happen */
-                if(count.get() != iteratedItems.get()) {
+                if (count.get() != iteratedItems.get()) {
                     getLogger().warning(String.format(
                             "Player %s inventory compacting: count %s != iteratedItems %s",
                             player.getName(), count.get(), iteratedItems.get()
@@ -131,8 +228,8 @@ public class Compactor extends JavaPlugin {
                 int droppedItems = 0; /* How many items got dropped */
 
                 /* Add items */
-                for(int i = 0; i < addAmount; i++) {
-                    if(addItem(inventory, info.targetMaterial)) {
+                for (int i = 0; i < addAmount; i++) {
+                    if (addItem(inventory, info.targetMaterial)) {
                         droppedItems++;
                     } else {
                         mergedItems.computeIfPresent(info.targetMaterial, (k, matCount) -> {
@@ -143,8 +240,8 @@ public class Compactor extends JavaPlugin {
                 }
 
                 /* And restore non-compacted items */
-                for(int i = 0; i < overflowAmount; i++) {
-                    if(addItem(inventory, info.sourceMaterial)) {
+                for (int i = 0; i < overflowAmount; i++) {
+                    if (addItem(inventory, info.sourceMaterial)) {
                         droppedItems++;
                     } else {
                         mergedItems.computeIfPresent(info.sourceMaterial, (k, matCount) -> {
@@ -155,7 +252,7 @@ public class Compactor extends JavaPlugin {
                 }
 
                 /* Warn player about dropped items */
-                if(droppedItems > 0) {
+                if (droppedItems > 0) {
                     player.sendMessage(droppedItems + " items got dropped on ground, because " +
                             "of insufficient space in inventory.");
                 }
@@ -177,7 +274,7 @@ public class Compactor extends JavaPlugin {
     /* Finds MaterialCompactorInfo for given Material */
     private Optional<MaterialCompactorInfo> findForMaterial(Material material) {
         for (MaterialCompactorInfo info : materialCompactorInfoList) {
-            if(info.sourceMaterial.equals(material))
+            if (info.sourceMaterial.equals(material))
                 return Optional.of(info);
         }
         return Optional.empty();
@@ -191,11 +288,11 @@ public class Compactor extends JavaPlugin {
         HashMap<Integer, ? extends ItemStack> inventoryItems = inventory.all(material);
         for (ItemStack itemStack : inventoryItems.values()) {
             /* This assertion shouldn't fail */
-            if(itemStack.getType() != material)
+            if (itemStack.getType() != material)
                 throw new RuntimeException("itemStack.getType() != material!");
 
             /* If ItemStack has less items than max stack size, increment item count */
-            if(itemStack.getAmount() < inventory.getMaxStackSize()) {
+            if (itemStack.getAmount() < inventory.getMaxStackSize()) {
                 itemStack.setAmount(itemStack.getAmount() + 1);
                 return false;
             }
@@ -205,12 +302,12 @@ public class Compactor extends JavaPlugin {
 
         /* Create new ItemStack, if inventory has enough space */
         int firstEmpty = inventory.firstEmpty();
-        if(firstEmpty != -1) {
+        if (firstEmpty != -1) {
             /* Add new item to inventory */
             inventory.setItem(firstEmpty, new ItemStack(material, 1));
         } else {
             /* This assertion shouldn't fail */
-            if(!(inventory.getHolder() instanceof Player)) {
+            if (!(inventory.getHolder() instanceof Player)) {
                 throw new RuntimeException("inventory.getHolder() != Player");
             }
 
@@ -240,11 +337,12 @@ public class Compactor extends JavaPlugin {
         /* Methods needed to implement Bukkit's ConfigurationSerializable interface */
         @Override
         public Map<String, Object> serialize() {
-            return new HashMap<String, Object>(){{
+            return new HashMap<String, Object>() {{
                 put("sourceMaterial", sourceMaterial);
                 put("sourceCount", sourceCount);
                 put("targetMaterial", targetMaterial);
             }};
         }
+
     }
 }

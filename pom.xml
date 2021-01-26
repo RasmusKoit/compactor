@@ -6,7 +6,7 @@
 
     <groupId>eu.ialbhost</groupId>
     <artifactId>compactor</artifactId>
-    <version>3.0.1</version>
+    <version>3.0.2</version>
     <repositories>
         <repository>
             <id>spigot-repo</id>
